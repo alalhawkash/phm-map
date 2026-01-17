@@ -206,6 +206,131 @@
             color: #1f2937;
             white-space: nowrap;
         }
+        .zone-navigation {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.95);
+            border: 2px solid #007AFF;
+            border-radius: 50%;
+            width: 48px;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            transition: all 0.2s ease;
+        }
+        .zone-navigation:hover {
+            background: #007AFF;
+            color: white;
+            box-shadow: 0 6px 16px rgba(0, 122, 255, 0.3);
+        }
+        .zone-navigation:active {
+            transform: translateY(-50%) scale(0.95);
+        }
+        .zone-nav-left {
+            left: 20px;
+        }
+        .zone-nav-right {
+            right: 20px;
+        }
+        .zone-navigation svg {
+            width: 24px;
+            height: 24px;
+            fill: #007AFF;
+            transition: fill 0.2s ease;
+        }
+        .zone-navigation:hover svg {
+            fill: white;
+        }
+        
+        /* RTL/LTR Support */
+        [dir="rtl"] .lang-toggle {
+            margin-right: 0;
+            margin-left: auto;
+        }
+        [dir="ltr"] .lang-toggle {
+            margin-left: 0;
+            margin-right: auto;
+        }
+        [dir="rtl"] .topbar-close {
+            margin-left: 0;
+            margin-right: auto;
+        }
+        [dir="ltr"] .topbar-close {
+            margin-right: 0;
+            margin-left: auto;
+        }
+        [dir="rtl"] .topbar-stat .value .pct {
+            margin-left: 0;
+            margin-right: 4px;
+        }
+        [dir="ltr"] .topbar-stat .value .pct {
+            margin-right: 0;
+            margin-left: 4px;
+        }
+        [dir="rtl"] .zone-nav-left {
+            left: auto;
+            right: 20px;
+        }
+        [dir="ltr"] .zone-nav-left {
+            right: auto;
+            left: 20px;
+        }
+        [dir="rtl"] .zone-nav-right {
+            right: auto;
+            left: 20px;
+        }
+        [dir="ltr"] .zone-nav-right {
+            left: auto;
+            right: 20px;
+        }
+        [dir="rtl"] #generateReportBtn {
+            margin-left: 0;
+            margin-right: 16px;
+        }
+        [dir="ltr"] #generateReportBtn {
+            margin-right: 0;
+            margin-left: 16px;
+        }
+        
+        /* Card ordering: RTL right-to-left, LTR left-to-right */
+        [dir="rtl"] .topbar-content {
+            direction: rtl;
+        }
+        [dir="ltr"] .topbar-content {
+            direction: ltr;
+        }
+        [dir="rtl"] .topbar-stats {
+            direction: rtl;
+        }
+        [dir="ltr"] .topbar-stats {
+            direction: ltr;
+        }
+        [dir="rtl"] .stat-row {
+            direction: rtl;
+        }
+        [dir="ltr"] .stat-row {
+            direction: ltr;
+        }
+        [dir="rtl"] .phc-mini-list {
+            direction: rtl;
+        }
+        [dir="ltr"] .phc-mini-list {
+            direction: ltr;
+        }
+        /* PHC pill text direction within cards */
+        [dir="rtl"] .phc-pill {
+            direction: rtl;
+            text-align: right;
+        }
+        [dir="ltr"] .phc-pill {
+            direction: ltr;
+            text-align: left;
+        }
     </style>
 </head>
 <body>
@@ -289,6 +414,16 @@
         </div>
         <div class="main">
             <div id="map"></div>
+            <button class="zone-navigation zone-nav-left" id="zoneNavLeft" aria-label="Previous zone">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+                </svg>
+            </button>
+            <button class="zone-navigation zone-nav-right" id="zoneNavRight" aria-label="Next zone">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
+                </svg>
+            </button>
         </div>
     </div>
 
@@ -312,7 +447,7 @@
         const SCREENING_JSON_URL = 'screened.json';
         const isYes = (v) => String(v || '').trim().toLowerCase() === 'yes' || v === true;
 
-        const normalizeKey = (v) => String(v || '').trim().toLowerCase();
+        const normalizeKey = (v) => String(v || '').trim().replace(/\s+/g, ' ').toLowerCase();
 
         const formatCountPct = (count, total) => {
             const c = Number(count);
@@ -561,8 +696,9 @@
             { name_ar: 'مركز الرعاية الصحية الاولية بالعزيزية شرورة', name_en: 'Aziziyah PHCC Sharoora', lat: 17.49644463, lng: 47.11248781, zone: 'sgh' },
             { name_ar: 'مركز الرعاية الصحية الاولية بالوديعة شرورة', name_en: 'Alwadia PHCC Sharoora', lat: 17.05604376, lng: 47.09488983, zone: 'sgh' },
             { name_ar: 'مركز الرعاية الصحية الاولية بسلطانه شرورة', name_en: 'Sultanaa PHCC Sharoora', lat: 17.48100418, lng: 47.11810708, zone: 'sgh' },
+            { name_ar: 'تماني', name_en: 'Tamani PHCC Sharoura', lat: 17.48500000, lng: 47.11500000, zone: 'sgh' },
             { name_ar: 'مركز صحي الاخاشيم', name_en: 'Alakashim Health Center', lat: 17.7212795, lng: 47.2143375, zone: 'sgh' },
-            { name_ar: 'مركز صحي الخالدية بشرورة', name_en: 'Khaldiya Sharoora Health Center', lat: 17.49589037, lng: 47.12088168, zone: 'sgh' },
+            { name_ar: 'خالدية شرورة', name_en: 'Khaldiya Sharoora Health Center', lat: 17.49589037, lng: 47.12088168, zone: 'sgh' },
             { name_ar: 'مركز الرعاية الصحية الاولية بتصلال', name_en: 'Taslal Health Center', lat: 17.63142516, lng: 44.4718774, zone: 'kgh' },
             { name_ar: 'مركز الرعاية الصحية الأولية بالمشعلية', name_en: 'Mishaliya', lat: 17.7596349, lng: 44.46164075, zone: 'kgh' },
             { name_ar: 'مركز الرعاية الصحية الأولية بجنوب المطار', name_en: 'Junoob Matar', lat: 17.5939663, lng: 44.44931437, zone: 'kgh' },
@@ -576,14 +712,15 @@
             { name_ar: 'مركز صحي العريسة', name_en: 'Al Arisa Health Center', lat: 17.56253263, lng: 44.30852923, zone: 'nngh' },
             { name_ar: 'مركز صحي رجلاء', name_en: 'RIJLA PHCC', lat: 17.4974044, lng: 44.21335344, zone: 'nngh' },
             { name_ar: 'مركز صحي وادي ريمان', name_en: 'Wadi Riman Health Center', lat: 17.5455171, lng: 44.38632901, zone: 'nngh' },
-            { name_ar: 'مركز الرعاية الأولية الصحية بالبلد', name_en: 'Albalad', lat: 17.49420914, lng: 44.13150175, zone: 'wnh' },
+            { name_ar: 'البلد', name_en: 'Albalad', lat: 17.49420914, lng: 44.13150175, zone: 'wnh' },
             { name_ar: 'مركز الرعاية الصحية الاولية بالجربة', name_en: 'Health Center in Aljurbah', lat: 17.47110123, lng: 44.15016604, zone: 'wnh' },
             { name_ar: 'مركز الرعاية الصحية الأولية بأبا السعود', name_en: 'PHCC Abasoud', lat: 17.48452285, lng: 44.12842703, zone: 'wnh' },
             { name_ar: 'مركز الرعايه الصحيه الاوليه بالموفجة', name_en: 'Health Center Al Mufja', lat: 17.43864766, lng: 44.05285434, zone: 'wnh' },
             { name_ar: 'مركز صحي الحضن', name_en: 'Alhadan PHCC', lat: 17.45825564, lng: 44.12599991, zone: 'wnh' },
             { name_ar: 'مركز صحي الصفا', name_en: 'Al Safa Health Center', lat: 17.4633955, lng: 44.07759645, zone: 'wnh' },
             { name_ar: 'مركز صحي القابل', name_en: 'Health Center Algabil', lat: 17.48997978, lng: 44.19169454, zone: 'wnh' },
-            { name_ar: 'مركز صحي دحضه', name_en: 'Dahada Health Center', lat: 17.51695355, lng: 44.16039583, zone: 'wnh' },
+            { name_ar: 'دحضه', name_en: 'Dahada Health Center', lat: 17.51695355, lng: 44.16039583, zone: 'wnh' },
+            { name_ar: 'المراطه', name_en: 'Al muratah phcc', lat: 17.48982264, lng: 44.10260304, zone: 'wnh' },
             { name_ar: 'مركز صحي شعب رير', name_en: 'Eam PHCC Reer', lat: 17.46419144, lng: 44.16237482, zone: 'wnh' },
             { name_ar: 'مركز صحي الشبهان', name_en: 'Shebhan PHCC', lat: 17.48417091, lng: 44.12151161, zone: 'wnh' },
             { name_ar: 'مركز الرعاية الصحية الأولية بنهوقة', name_en: 'Primary Health Care Center in Nhogah', lat: 17.44634448, lng: 44.10357423, zone: 'wnh' },
@@ -600,10 +737,10 @@
             { name_ar: 'مركز صحي عاكفه', name_en: 'Aqfah PHCC', lat: 17.49513154, lng: 43.74081721, zone: 'kkh' },
             { name_ar: 'مركز الرعاية الصحية الاولية بالجفه', name_en: 'AL JAFFAH PHCC', lat: 17.77329562, lng: 43.91604472, zone: 'hgh' },
             { name_ar: 'مركز الرعاية الصحية الاولية بالحرشف', name_en: 'Al Harshar PHCC', lat: 17.67157909, lng: 43.88503866, zone: 'hgh' },
-            { name_ar: 'مركز الرعاية الصحية الأولية بالمنتشر', name_en: 'ALMONTSHER  PHCC', lat: 17.88795838, lng: 44.171646, zone: 'hgh' },
+            { name_ar: 'المنتشر', name_en: 'ALMONTSHER  PHCC', lat: 17.88795838, lng: 44.171646, zone: 'hgh' },
             { name_ar: 'مركز الرعاية الصحية الأولية بحبونا', name_en: 'Habuna Primary Health Care Center', lat: 17.85048519, lng: 44.01969491, zone: 'hgh' },
             { name_ar: 'مركز الرعاية الصحية بالضيقة', name_en: 'Dekah', lat: 17.85470235, lng: 44.27155056, zone: 'hgh' },
-            { name_ar: 'مركز الرعايه الصحية الاولية بالمجمع', name_en: 'Majma', lat: 17.75457056, lng: 43.96086896, zone: 'hgh' },
+            { name_ar: 'المجمع', name_en: 'Majma', lat: 17.75457056, lng: 43.96086896, zone: 'hgh' },
             { name_ar: 'مركز الرعاية الاولية الخانق', name_en: 'Primary Care Alkhaniq', lat: 17.74396059, lng: 43.76283045, zone: 'bgh' },
             { name_ar: 'مركز صحي القرن', name_en: 'AL- qarn', lat: 17.75285114, lng: 43.71795687, zone: 'bgh' },
             { name_ar: 'مركز صحي الرحاب', name_en: 'Alrehab Primary Care Center', lat: 18.00721995, lng: 43.89921, zone: 'bgh' },
@@ -613,13 +750,14 @@
             { name_ar: 'مركز الرعاية الصحية الاولية بوادي وسط', name_en: 'Wadi Wasat', lat: 18.29824487, lng: 44.20244981, zone: 'ygh' },
             { name_ar: 'مركز الرعاية الصحية الاولية يدمة', name_en: 'Yadama Primary Health Care Center', lat: 18.53280931, lng: 44.20531118, zone: 'ygh' },
             { name_ar: 'مركز صحي اللجام', name_en: 'Legam Primary Health Care Center', lat: 18.59928839, lng: 44.18008645, zone: 'ygh' },
-            { name_ar: 'مركز صحي سلطانة', name_en: 'Sultana Primary Health Care Center', lat: 18.85983969, lng: 45.11052394, zone: 'ygh' },
-            { name_ar: 'مركزالرعاية الصحية الاولية بالمحمدية', name_en: 'Mohammadia PHCC', lat: 18.4440713, lng: 44.79583144, zone: 'ygh' },
+            { name_ar: 'سلطانة يدمة', name_en: 'Sultana Primary Health Care Center', lat: 18.85983969, lng: 45.11052394, zone: 'ygh' },
+            { name_ar: 'المحمدية', name_en: 'Mohammadia PHCC', lat: 18.4440713, lng: 44.79583144, zone: 'ygh' },
             { name_ar: 'مركز صحي الصفاح', name_en: 'Suffah PHCC', lat: 18.1823639, lng: 44.33625415, zone: 'tgh' },
             { name_ar: 'مركز صحي ثار', name_en: 'Thar PHCC', lat: 17.97677191, lng: 44.10630215, zone: 'tgh' },
             { name_ar: 'مركز صحي حما', name_en: 'Hema PHCC', lat: 18.20931322, lng: 44.48405551, zone: 'tgh' },
             { name_ar: 'مركز صحي طلحام', name_en: 'Talham PHCC', lat: 18.27707155, lng: 43.995497, zone: 'tgh' },
             { name_ar: 'مركز صحي قطن', name_en: 'Qattan PHCC', lat: 18.13527449, lng: 44.12734562, zone: 'tgh' },
+            { name_ar: 'تلاع', name_en: 'tilah phcc', lat: 18.0529148, lng: 43.98022, zone: 'tgh' },
             { name_ar: 'مركزصحي نعوان', name_en: 'Naiwan PHCC', lat: 18.29489278, lng: 43.87686073, zone: 'tgh' }
         ];
 
@@ -634,8 +772,67 @@
         const formatPhcName = (raw) => {
             const key = String(raw || '').trim();
             if (!key) return '';
-            const hit = phcNameLookup[key.toLowerCase()];
-            if (hit) return currentLang === 'ar' ? (hit.ar || key) : (hit.en || key);
+            // Fix common typos before lookup
+            let correctedKey = key;
+            correctedKey = correctedKey.replace(/\bhelth\b/gi, 'health');
+            correctedKey = correctedKey.replace(/\bhealh\b/gi, 'health');
+            correctedKey = correctedKey.replace(/\bhelath\b/gi, 'health');
+            correctedKey = correctedKey.replace(/\bprimaryhealth\b/gi, 'primary health');
+            correctedKey = correctedKey.replace(/\bprimary\s*health\s+care\s+center\b/gi, 'primary health care center');
+            correctedKey = correctedKey.replace(/\bsharoorah\b/gi, 'sharoora');
+            const normalizedKey = normalizeKey(correctedKey);
+            let hit = phcNameLookup[normalizedKey];
+            // If not found, try fuzzy matching for common variations
+            if (!hit) {
+                // Try matching with case-insensitive partial match
+                const searchKey = normalizedKey;
+                for (const [lookupKey, value] of Object.entries(phcNameLookup)) {
+                    if (lookupKey.includes(searchKey) || searchKey.includes(lookupKey)) {
+                        // Check if it's a reasonable match (same core name)
+                        if (searchKey.replace(/\s+/g, '') === lookupKey.replace(/\s+/g, '')) {
+                            hit = value;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (hit) {
+                if (currentLang === 'ar') {
+                    let arName = hit.ar || key;
+                    // Remove common prefixes
+                    arName = arName.replace(/^مركز الرعاية الصحية الاولية\s+/i, '');
+                    arName = arName.replace(/^مركز الرعاية الصحية الأولية\s+/i, '');
+                    arName = arName.replace(/^مركز الرعايةالصحية الأولية\s+/i, '');
+                    arName = arName.replace(/^مركز الرعايه الصحيه الاوليه\s+/i, '');
+                    arName = arName.replace(/^مركز الرعاية الاولية\s+/i, '');
+                    arName = arName.replace(/^مركز الرعايه الصحية\s+/i, '');
+                    arName = arName.replace(/^مركز الرعاية الصحية\s+/i, '');
+                    arName = arName.replace(/^مركز صحي\s+/i, '');
+                    // Remove "ب" from start except for "بدر الجنوب"
+                    if (arName.startsWith('ب') && !arName.startsWith('بدر الجنوب')) {
+                        arName = arName.substring(1).trim();
+                    }
+                    return arName;
+                }
+                return hit.en || key;
+            }
+            // If not found, try to find a partial match or return original if already Arabic
+            if (/[\u0600-\u06FF]/.test(key)) {
+                // Already Arabic, try to clean it
+                let arName = key;
+                arName = arName.replace(/^مركز الرعاية الصحية الاولية\s+/i, '');
+                arName = arName.replace(/^مركز الرعاية الصحية الأولية\s+/i, '');
+                arName = arName.replace(/^مركز الرعايةالصحية الأولية\s+/i, '');
+                arName = arName.replace(/^مركز الرعايه الصحيه الاوليه\s+/i, '');
+                arName = arName.replace(/^مركز الرعاية الاولية\s+/i, '');
+                arName = arName.replace(/^مركز الرعايه الصحية\s+/i, '');
+                arName = arName.replace(/^مركز الرعاية الصحية\s+/i, '');
+                arName = arName.replace(/^مركز صحي\s+/i, '');
+                if (arName.startsWith('ب') && !arName.startsWith('بدر الجنوب')) {
+                    arName = arName.substring(1).trim();
+                }
+                return arName;
+            }
             return key;
         };
         const formatZoneName = (zoneCode) => {
@@ -657,9 +854,7 @@
             const zn = zoneNames[center.zone] || { ar: '', en: center.zone.toUpperCase() };
             const markerLabel = () => {
                 const zoneText = currentLang === 'ar' ? `${zn.ar}` : `${zn.en}`;
-                const nameText = currentLang === 'ar'
-                    ? (center.name_ar || center.name_en || '')
-                    : (center.name_en || center.name_ar || '');
+                const nameText = formatPhcName(center.name_en || center.name_ar);
                 return `${nameText}<br>${zoneText}`;
             };
             marker.bindTooltip(markerLabel(), {
@@ -693,6 +888,16 @@
 
         const setLang = (lang) => {
             currentLang = lang;
+            // Set text direction: RTL for Arabic, LTR for English
+            const html = document.documentElement;
+            const body = document.body;
+            if (html) {
+                html.setAttribute('dir', lang === 'ar' ? 'rtl' : 'ltr');
+                html.setAttribute('lang', lang === 'ar' ? 'ar' : 'en');
+            }
+            if (body) {
+                body.setAttribute('dir', lang === 'ar' ? 'rtl' : 'ltr');
+            }
             if (langArBtn && langEnBtn) {
                 langArBtn.classList.toggle('active', lang === 'ar');
                 langEnBtn.classList.toggle('active', lang === 'en');
@@ -714,9 +919,7 @@
             applyZoneLabels(lastZoneId);
             healthcareMarkers.forEach(({ marker, center, zn }) => {
                 const zoneText = currentLang === 'ar' ? `${zn.ar}` : `${zn.en}`;
-                const nameText = currentLang === 'ar'
-                    ? (center.name_ar || center.name_en || '')
-                    : (center.name_en || center.name_ar || '');
+                const nameText = formatPhcName(center.name_en || center.name_ar);
                 marker.bindTooltip(`${nameText}<br>${zoneText}`, {
                     direction: 'top',
                     offset: [0, -4],
@@ -891,10 +1094,10 @@
 
                 reportData.push({
                     PHC: phc,
-                    'Total Population': scr.target,
+                    'Total Population 35+': scr.target,
                     'Target': scrAdjTarget,
-                    'Screening_Screened': scr.screened,
-                    'Screening_Remaining': scrRemaining,
+                    'Screened': scr.screened,
+                    'Not Screened': scrRemaining,
                     'DM_Controlled': dm.controlled,
                     'DM_Uncontrolled': dm.uncontrolled,
                     'PreDM_Still': pre.still
@@ -1088,7 +1291,7 @@
                     .sort((a, b) => a.ratio - b.ratio || a.screened - b.screened)
                     .slice(0, 5)
                     .map(item => ({
-                        label: `${formatPhcName(item.phc)} • ${item.screened}/${item.adjTarget} (${pctText(item.screened, item.adjTarget)})`,
+                        label: `${formatPhcName(item.phc)} • ${pctText(item.screened, item.adjTarget)}`,
                         phc: item.phc,
                         screened: item.screened,
                         adjTarget: item.adjTarget
@@ -1153,7 +1356,7 @@
                     .sort((a, b) => b.uncontrolled - a.uncontrolled) // sort by uncontrolled count (descending)
                     .slice(0, 5)
                     .map(item => ({
-                        label: `${formatPhcName(item.phc)} • ${item.controlled}/${item.total} (${pctText(item.controlled, item.total)})`,
+                        label: `${formatPhcName(item.phc)} • ${pctText(item.controlled, item.total)}`,
                         phc: item.phc
                     }));
                 renderPhcPills(phcTopDm, dmList, (clickedPhc) => {
@@ -1215,7 +1418,7 @@
                     .sort((a, b) => b.still - a.still) // sort by still count (descending)
                     .slice(0, 5)
                     .map(item => ({
-                        label: `${formatPhcName(item.phc)} • ${item.still}/${item.total} (${pctText(item.still, item.total)})`,
+                        label: `${formatPhcName(item.phc)} • ${pctText(item.still, item.total)}`,
                         phc: item.phc
                     }));
                 renderPhcPills(phcTopPreDm, preList, (clickedPhc) => {
@@ -1223,6 +1426,50 @@
                 });
             }
         };
+
+        // Zone navigation (ordered list)
+        const zoneOrder = ['sgh', 'kgh', 'nngh', 'wnh', 'mch', 'kkh', 'tgh', 'bgh', 'ygh', 'hgh'];
+        
+        const navigateToZone = (direction) => {
+            let currentZone = lastZoneId;
+            // If viewing cluster or no zone selected, start from first zone
+            if (!currentZone || currentZone === clusterId) {
+                currentZone = zoneOrder[0];
+            } else {
+                const currentIndex = zoneOrder.indexOf(currentZone.toLowerCase());
+                if (currentIndex === -1) {
+                    currentZone = zoneOrder[0];
+                } else {
+                    if (direction === 'next') {
+                        const nextIndex = (currentIndex + 1) % zoneOrder.length;
+                        currentZone = zoneOrder[nextIndex];
+                    } else {
+                        const prevIndex = (currentIndex - 1 + zoneOrder.length) % zoneOrder.length;
+                        currentZone = zoneOrder[prevIndex];
+                    }
+                }
+            }
+            // Navigate to the zone
+            showTopbar(currentZone);
+            const poly = polygons[currentZone];
+            if (poly) {
+                const bounds = poly.getBounds();
+                if (bounds && bounds.isValid()) {
+                    map.fitBounds(bounds, { padding: [50, 50] });
+                }
+                applyZoneLabels(currentZone);
+            }
+        };
+
+        // Zone navigation buttons
+        const zoneNavLeft = document.getElementById('zoneNavLeft');
+        const zoneNavRight = document.getElementById('zoneNavRight');
+        if (zoneNavLeft) {
+            zoneNavLeft.addEventListener('click', () => navigateToZone('prev'));
+        }
+        if (zoneNavRight) {
+            zoneNavRight.addEventListener('click', () => navigateToZone('next'));
+        }
 
         // Zone click => show topbar
         Object.entries(polygons).forEach(([id, poly]) => {
