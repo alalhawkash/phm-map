@@ -288,6 +288,7 @@
         const PRE_DM_NORMAL_STATUSES = ['back to normal'];
         const PRE_DM_STILL_STATUSES = ['still pre-dm', 'still pre dm', 'progressed to diabetic'];
         const SCREENING_JSON_URL = 'screened.json';
+        const isYes = (v) => String(v || '').trim().toLowerCase() === 'yes' || v === true;
 
         const formatCountPct = (count, total) => {
             const c = Number(count);
@@ -409,10 +410,10 @@
                     const zone = (row.Zone || row.LAST_VISIT_ZONE || '').toUpperCase();
                     if (!zone) return;
                     if (!stats[zone]) stats[zone] = { screened: 0, target: 0 };
-                    const status = String(row.SCREENING_STATUS || '').trim().toLowerCase();
-                    const inTarget = row.IN_TARGET === true || row.IN_TARGET === 'true' || row.FROM_TARGET_FILE === 'Yes' || row.FROM_TARGET_FILE === true;
-                    if (inTarget) stats[zone].target += 1;
-                    if (status === 'screened') stats[zone].screened += 1;
+                    const target = isYes(row.IS_TARGETED);
+                    const screened = isYes(row.HAS_LAB) || (!isYes(row.REMAINING) && target);
+                    if (target) stats[zone].target += 1;
+                    if (screened) stats[zone].screened += 1;
                 });
                 const total = { screened: 0, target: 0 };
                 Object.values(stats).forEach(z => {
@@ -742,9 +743,9 @@
                 if (targetZone && z !== targetZone) return false;
                 return true;
             });
-            const isScreened = (r) => String(r.SCREENING_STATUS || '').trim().toLowerCase() === 'screened';
-            const inTarget = (r) => r.IN_TARGET === true || r.IN_TARGET === 'true' || r.FROM_TARGET_FILE === 'Yes' || r.FROM_TARGET_FILE === true;
-            if (type === 'screened') return rows.filter(isScreened);
+            const isScreened = (r) => isYes(r.HAS_LAB) || (!isYes(r.REMAINING) && isYes(r.IS_TARGETED));
+            const inTarget = (r) => isYes(r.IS_TARGETED);
+            if (type === 'screened') return rows.filter(r => inTarget(r) && isScreened(r));
             if (type === 'target') return rows.filter(inTarget);
             if (type === 'remaining') {
                 const targetList = rows.filter(inTarget);
