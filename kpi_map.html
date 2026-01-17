@@ -191,6 +191,21 @@
             font-weight: 700;
             color: #1d1d1f;
         }
+        .phc-mini-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 6px;
+        }
+        .phc-pill {
+            background: #f8f8f8;
+            border: 1px solid #e5e5e7;
+            border-radius: 10px;
+            padding: 4px 8px;
+            font-size: 11px;
+            color: #1f2937;
+            white-space: nowrap;
+        }
     </style>
 </head>
 <body>
@@ -229,6 +244,7 @@
                                 <div class="value" id="topbarRemaining">--</div>
                             </div>
                         </div>
+                        <div class="phc-mini-list" id="phcTopScreening"></div>
                     </div>
                     <div class="topbar-stat large">
                         <div class="label">
@@ -245,6 +261,7 @@
                                 <div class="value" id="topbarUncontrolled">--</div>
                             </div>
                         </div>
+                        <div class="phc-mini-list" id="phcTopDm"></div>
                     </div>
                     <div class="topbar-stat large">
                         <div class="label">
@@ -261,6 +278,7 @@
                                 <div class="value" id="topbarPreDmStill">--</div>
                             </div>
                         </div>
+                        <div class="phc-mini-list" id="phcTopPreDm"></div>
                     </div>
                 </div>
             </div>
@@ -290,13 +308,21 @@
         const SCREENING_JSON_URL = 'screened.json';
         const isYes = (v) => String(v || '').trim().toLowerCase() === 'yes' || v === true;
 
+        const normalizeKey = (v) => String(v || '').trim().toLowerCase();
+
         const formatCountPct = (count, total) => {
             const c = Number(count);
             const t = Number(total);
             if (!Number.isFinite(c)) return '--';
             if (!Number.isFinite(t) || t <= 0) return `${c}`;
-            const pct = ((c / t) * 100).toFixed(1);
+            const pct = Math.min((c / t) * 100, 100).toFixed(1);
             return `${c} <span class="pct">(${pct}%)</span>`;
+        };
+        const pctText = (num, den) => {
+            const n = Number(num);
+            const d = Number(den);
+            if (!Number.isFinite(n) || !Number.isFinite(d) || d <= 0) return '0%';
+            return `${Math.min((n / d) * 100, 100).toFixed(1)}%`;
         };
 
         const toCsv = (rows) => {
@@ -593,6 +619,22 @@
             { name_ar: 'مركزصحي نعوان', name_en: 'Naiwan PHCC', lat: 18.29489278, lng: 43.87686073, zone: 'tgh' }
         ];
 
+        // PHC name lookup for bilingual display
+        const phcNameLookup = {};
+        healthcareCenters.forEach(({ name_ar, name_en }) => {
+            const enKey = normalizeKey(name_en);
+            const arKey = normalizeKey(name_ar);
+            if (enKey) phcNameLookup[enKey] = { ar: name_ar || name_en, en: name_en || name_ar };
+            if (arKey) phcNameLookup[arKey] = { ar: name_ar || name_en, en: name_en || name_ar };
+        });
+        const formatPhcName = (raw) => {
+            const key = String(raw || '').trim();
+            if (!key) return '';
+            const hit = phcNameLookup[key.toLowerCase()];
+            if (hit) return currentLang === 'ar' ? (hit.ar || key) : (hit.en || key);
+            return key;
+        };
+
         const createMinimalIcon = (color) => L.divIcon({
             className: 'minimal-marker',
             html: `<div style="width: 8px; height: 8px; background-color: ${color}; border-radius: 50%;"></div>`,
@@ -679,6 +721,9 @@
         const topbarScreened = document.getElementById('topbarScreened');
         const topbarTarget = document.getElementById('topbarTarget');
         const topbarRemaining = document.getElementById('topbarRemaining');
+        const phcTopScreening = document.getElementById('phcTopScreening');
+        const phcTopDm = document.getElementById('phcTopDm');
+        const phcTopPreDm = document.getElementById('phcTopPreDm');
         let lastZoneId = null;
 
         const showTopbar = (zoneId) => {
@@ -709,6 +754,7 @@
                 const remaining = Number.isFinite(adjTarget) ? Math.max(adjTarget - screenedVal, 0) : null;
                 topbarRemaining.textContent = Number.isFinite(remaining) ? remaining : '--';
             }
+            buildTopPhcLists(zoneKey);
             topbar.classList.add('active');
         };
 
@@ -759,6 +805,69 @@
             return [];
         };
 
+        const exportScreeningRemainingByPhc = (phcRaw, zoneKey, item) => {
+            if (!phcRaw) return;
+            const targetZone = zoneKey && zoneKey.toUpperCase() !== clusterId.toUpperCase() ? zoneKey.toUpperCase() : null;
+            // Use same matching logic as display (trim, not normalizeKey for PHC)
+            const phcMatch = (r) => {
+                const phc = (r.PHC || r.PHC_NAME || '').trim();
+                return normalizeKey(phc) === normalizeKey(phcRaw);
+            };
+            const targetList = screeningRaw.filter(r => {
+                const z = (r.Zone || r.LAST_VISIT_ZONE || '').toUpperCase();
+                if (targetZone && z !== targetZone) return false;
+                if (!phcMatch(r)) return false;
+                return isYes(r.IS_TARGETED);
+            });
+            // Use precomputed values from display if available, otherwise recalculate
+            const screenedCount = item ? item.screened : (() => {
+                const isScreened = (r) => {
+                    const target = isYes(r.IS_TARGETED);
+                    return isYes(r.HAS_LAB) || (!isYes(r.REMAINING) && target);
+                };
+                return targetList.filter(isScreened).length;
+            })();
+            const adjTarget = item ? item.adjTarget : Math.round(targetList.length * 0.5);
+            const remainingCount = Math.max(adjTarget - screenedCount, 0);
+            const unscreenedList = targetList.filter(r => isYes(r.REMAINING));
+            const remainingList = unscreenedList.slice(0, Math.min(remainingCount, unscreenedList.length));
+            downloadCsv(`screening_remaining_${slugify(phcRaw)}.csv`, remainingList);
+        };
+
+        const exportDmUncontrolledByPhc = (phcRaw, zoneKey) => {
+            if (!phcRaw) return;
+            const targetZone = zoneKey && zoneKey.toUpperCase() !== clusterId.toUpperCase() ? zoneKey.toUpperCase() : null;
+            const phcMatch = (r) => {
+                const phc = (r.LAST_VISIT_PHC || r.PHC || '').trim();
+                return normalizeKey(phc) === normalizeKey(phcRaw);
+            };
+            const uncontrolledList = dmRaw.filter(r => {
+                const z = (r.LAST_VISIT_ZONE || r.Zone || '').toUpperCase();
+                if (targetZone && z !== targetZone) return false;
+                if (!phcMatch(r)) return false;
+                const status = String(r.CONTROL_STATUS || '').trim().toLowerCase();
+                return UNCONTROLLED_STATUSES.includes(status);
+            });
+            downloadCsv(`dm_uncontrolled_${slugify(phcRaw)}.csv`, uncontrolledList);
+        };
+
+        const exportPreDmStillByPhc = (phcRaw, zoneKey) => {
+            if (!phcRaw) return;
+            const targetZone = zoneKey && zoneKey.toUpperCase() !== clusterId.toUpperCase() ? zoneKey.toUpperCase() : null;
+            const phcMatch = (r) => {
+                const phc = (r.LAST_VISIT_PHC || r.PHC || '').trim();
+                return normalizeKey(phc) === normalizeKey(phcRaw);
+            };
+            const stillList = preDmRaw.filter(r => {
+                const z = (r.LAST_VISIT_ZONE || r.Zone || '').toUpperCase();
+                if (targetZone && z !== targetZone) return false;
+                if (!phcMatch(r)) return false;
+                const status = String(r.STATUS || '').trim().toLowerCase();
+                return PRE_DM_STILL_STATUSES.includes(status);
+            });
+            downloadCsv(`predm_still_${slugify(phcRaw)}.csv`, stillList);
+        };
+
         const exportHandlers = {
             'dm-controlled': (zone) => filterDmRows(zone, 'controlled'),
             'dm-uncontrolled': (zone) => filterDmRows(zone, 'uncontrolled'),
@@ -780,6 +889,131 @@
                     const rows = fn(zone) || [];
                     downloadCsv(`${key}_${zone}.csv`, rows);
                 });
+            });
+        };
+
+        const slugify = (str) => normalizeKey(str).replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'phc';
+
+        const renderPhcPills = (el, items, onClick) => {
+            if (!el) return;
+            if (!items || !items.length) {
+                el.innerHTML = '';
+                return;
+            }
+            el.innerHTML = items.map(item => {
+                if (typeof item === 'string') {
+                    return `<span class="phc-pill">${item}</span>`;
+                }
+                const { label, phc } = item;
+                const dataPhc = phc || '';
+                const clickable = onClick ? ' phc-pill-clickable' : '';
+                return `<span class="phc-pill${clickable}" data-phc="${dataPhc}">${label}</span>`;
+            }).join('');
+            if (onClick) {
+                el.querySelectorAll('.phc-pill-clickable').forEach(span => {
+                    span.addEventListener('click', () => {
+                        const phc = span.getAttribute('data-phc') || '';
+                        onClick(phc);
+                    });
+                });
+            }
+        };
+
+        const buildTopPhcLists = (zoneKey) => {
+            const targetZone = zoneKey && zoneKey.toUpperCase() !== clusterId.toUpperCase() ? zoneKey.toUpperCase() : null;
+
+            // Screening: screened/target ratio
+            const screeningByPhc = {};
+            screeningRaw.forEach(r => {
+                const z = (r.Zone || r.LAST_VISIT_ZONE || '').toUpperCase();
+                if (targetZone && z !== targetZone) return;
+                const phc = (r.PHC || r.PHC_NAME || '').trim();
+                if (!phc) return;
+                const target = isYes(r.IS_TARGETED);
+                const screened = isYes(r.HAS_LAB) || (!isYes(r.REMAINING) && target);
+                if (!screeningByPhc[phc]) screeningByPhc[phc] = { screened: 0, target: 0 };
+                if (target) screeningByPhc[phc].target += 1;
+                if (screened) screeningByPhc[phc].screened += 1;
+            });
+            const screeningRawList = Object.entries(screeningByPhc)
+                .map(([phc, v]) => {
+                    const adjTarget = Math.round((v.target || 0) * 0.5);
+                    const denom = adjTarget > 0 ? adjTarget : 0;
+                    const ratio = denom > 0 ? v.screened / denom : 0;
+                    return { phc, ...v, adjTarget: denom, ratio };
+                })
+                .filter(x => x.adjTarget > 0);
+            const screeningList = screeningRawList
+                .filter(x => x.ratio < 1) // exclude 100% or above
+                .sort((a, b) => a.ratio - b.ratio || a.screened - b.screened)
+                .slice(0, 5)
+                .map(item => ({
+                    label: `${formatPhcName(item.phc)} • ${item.screened}/${item.adjTarget} (${pctText(item.screened, item.adjTarget)})`,
+                    phc: item.phc,
+                    screened: item.screened,
+                    adjTarget: item.adjTarget
+                }));
+            renderPhcPills(phcTopScreening, screeningList, (clickedPhc) => {
+                const item = screeningList.find(i => normalizeKey(i.phc) === normalizeKey(clickedPhc));
+                exportScreeningRemainingByPhc(clickedPhc, zoneKey, item);
+            });
+
+            // DM: controlled / (controlled+uncontrolled)
+            const dmByPhc = {};
+            dmRaw.forEach(r => {
+                const z = (r.LAST_VISIT_ZONE || r.Zone || '').toUpperCase();
+                if (targetZone && z !== targetZone) return;
+                const phc = (r.LAST_VISIT_PHC || r.PHC || '').trim();
+                if (!phc) return;
+                const status = String(r.CONTROL_STATUS || '').trim().toLowerCase();
+                if (!dmByPhc[phc]) dmByPhc[phc] = { controlled: 0, uncontrolled: 0 };
+                if (CONTROLLED_STATUSES.includes(status)) dmByPhc[phc].controlled += 1;
+                if (UNCONTROLLED_STATUSES.includes(status)) dmByPhc[phc].uncontrolled += 1;
+            });
+            const dmList = Object.entries(dmByPhc)
+                .map(([phc, v]) => {
+                    const total = v.controlled + v.uncontrolled;
+                    const ratio = total > 0 ? v.controlled / total : 0;
+                    return { phc, ...v, total, ratio };
+                })
+                .filter(x => x.uncontrolled > 0) // only PHCs with uncontrolled patients
+                .sort((a, b) => b.uncontrolled - a.uncontrolled) // sort by uncontrolled count (descending)
+                .slice(0, 5)
+                .map(item => ({
+                    label: `${formatPhcName(item.phc)} • ${item.controlled}/${item.total} (${pctText(item.controlled, item.total)})`,
+                    phc: item.phc
+                }));
+            renderPhcPills(phcTopDm, dmList, (clickedPhc) => {
+                exportDmUncontrolledByPhc(clickedPhc, zoneKey);
+            });
+
+            // Pre-DM: back to normal / total pre-dm
+            const preByPhc = {};
+            preDmRaw.forEach(r => {
+                const z = (r.LAST_VISIT_ZONE || r.Zone || '').toUpperCase();
+                if (targetZone && z !== targetZone) return;
+                const phc = (r.LAST_VISIT_PHC || r.PHC || '').trim();
+                if (!phc) return;
+                const status = String(r.STATUS || '').trim().toLowerCase();
+                if (!preByPhc[phc]) preByPhc[phc] = { normal: 0, still: 0 };
+                if (PRE_DM_NORMAL_STATUSES.includes(status)) preByPhc[phc].normal += 1;
+                if (PRE_DM_STILL_STATUSES.includes(status)) preByPhc[phc].still += 1;
+            });
+            const preList = Object.entries(preByPhc)
+                .map(([phc, v]) => {
+                    const total = v.normal + v.still;
+                    const ratio = total > 0 ? v.normal / total : 0;
+                    return { phc, ...v, total, ratio };
+                })
+                .filter(x => x.still > 0) // only PHCs with still Pre-DM patients
+                .sort((a, b) => b.still - a.still) // sort by still count (descending)
+                .slice(0, 5)
+                .map(item => ({
+                    label: `${formatPhcName(item.phc)} • ${item.still}/${item.total} (${pctText(item.still, item.total)})`,
+                    phc: item.phc
+                }));
+            renderPhcPills(phcTopPreDm, preList, (clickedPhc) => {
+                exportPreDmStillByPhc(clickedPhc, zoneKey);
             });
         };
 
