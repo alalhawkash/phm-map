@@ -223,10 +223,14 @@
         </div>
         <div class="topbar" id="topbar">
             <div class="topbar-content">
-                <div>
+                <div style="flex: 1;">
                     <div class="topbar-title" id="topbarTitle"></div>
                     <div class="topbar-sub" id="topbarSub"></div>
                 </div>
+                <button id="generateReportBtn" style="display:none; margin-left:16px; padding:8px 16px; background:#007AFF; color:white; border:none; border-radius:8px; cursor:pointer; font-weight:600; font-size:13px;">
+                    <span data-lang="ar">تقرير شامل</span>
+                    <span data-lang="en" style="display:none;">Generate Report</span>
+                </button>
                 <div class="topbar-stats">
                     <div class="topbar-stat">
                         <div class="label"><span data-lang="ar">الفحوصات</span><span data-lang="en" style="display:none;">Screening</span></div>
@@ -634,6 +638,10 @@
             if (hit) return currentLang === 'ar' ? (hit.ar || key) : (hit.en || key);
             return key;
         };
+        const formatZoneName = (zoneCode) => {
+            const zn = zoneNames[zoneCode.toLowerCase()] || { ar: zoneCode, en: zoneCode };
+            return currentLang === 'ar' ? zn.ar : zn.en;
+        };
 
         const createMinimalIcon = (color) => L.divIcon({
             className: 'minimal-marker',
@@ -695,6 +703,14 @@
                     span.style.display = (lang === 'ar' && isAr) || (lang === 'en' && !isAr) ? 'inline' : 'none';
                 });
             }
+            // Update report button text
+            if (generateReportBtn) {
+                const btnSpans = generateReportBtn.querySelectorAll('span[data-lang]');
+                btnSpans.forEach(span => {
+                    const isAr = span.getAttribute('data-lang') === 'ar';
+                    span.style.display = (lang === 'ar' && isAr) || (lang === 'en' && !isAr) ? 'inline' : 'none';
+                });
+            }
             applyZoneLabels(lastZoneId);
             healthcareMarkers.forEach(({ marker, center, zn }) => {
                 const zoneText = currentLang === 'ar' ? `${zn.ar}` : `${zn.en}`;
@@ -724,6 +740,7 @@
         const phcTopScreening = document.getElementById('phcTopScreening');
         const phcTopDm = document.getElementById('phcTopDm');
         const phcTopPreDm = document.getElementById('phcTopPreDm');
+        const generateReportBtn = document.getElementById('generateReportBtn');
         let lastZoneId = null;
 
         const showTopbar = (zoneId) => {
@@ -755,6 +772,11 @@
                 topbarRemaining.textContent = Number.isFinite(remaining) ? remaining : '--';
             }
             buildTopPhcLists(zoneKey);
+            // Show report button only for zones (not cluster)
+            const isZoneSelected = id && id !== clusterId;
+            if (generateReportBtn) {
+                generateReportBtn.style.display = isZoneSelected ? 'block' : 'none';
+            }
             topbar.classList.add('active');
         };
 
@@ -803,6 +825,86 @@
                 return remainingList.slice(0, remainingCount);
             }
             return [];
+        };
+
+        const generateZoneReport = (zoneKey) => {
+            const targetZone = zoneKey && zoneKey.toUpperCase() !== clusterId.toUpperCase() ? zoneKey.toUpperCase() : null;
+            if (!targetZone) return; // Don't generate for cluster
+
+            // Aggregate stats by PHC
+            const reportData = [];
+
+            // Screening stats by PHC
+            const screeningByPhc = {};
+            screeningRaw.forEach(r => {
+                const z = (r.Zone || r.LAST_VISIT_ZONE || '').toUpperCase();
+                if (z !== targetZone) return;
+                const phc = (r.PHC || r.PHC_NAME || '').trim();
+                if (!phc) return;
+                const target = isYes(r.IS_TARGETED);
+                const screened = isYes(r.HAS_LAB) || (!isYes(r.REMAINING) && target);
+                if (!screeningByPhc[phc]) screeningByPhc[phc] = { screened: 0, target: 0 };
+                if (target) screeningByPhc[phc].target += 1;
+                if (screened) screeningByPhc[phc].screened += 1;
+            });
+
+            // DM stats by PHC
+            const dmByPhc = {};
+            dmRaw.forEach(r => {
+                const z = (r.LAST_VISIT_ZONE || r.Zone || '').toUpperCase();
+                if (z !== targetZone) return;
+                const phc = (r.LAST_VISIT_PHC || r.PHC || '').trim();
+                if (!phc) return;
+                const status = String(r.CONTROL_STATUS || '').trim().toLowerCase();
+                if (!dmByPhc[phc]) dmByPhc[phc] = { controlled: 0, uncontrolled: 0 };
+                if (CONTROLLED_STATUSES.includes(status)) dmByPhc[phc].controlled += 1;
+                if (UNCONTROLLED_STATUSES.includes(status)) dmByPhc[phc].uncontrolled += 1;
+            });
+
+            // Pre-DM stats by PHC
+            const preDmByPhc = {};
+            preDmRaw.forEach(r => {
+                const z = (r.LAST_VISIT_ZONE || r.Zone || '').toUpperCase();
+                if (z !== targetZone) return;
+                const phc = (r.LAST_VISIT_PHC || r.PHC || '').trim();
+                if (!phc) return;
+                const status = String(r.STATUS || '').trim().toLowerCase();
+                if (!preDmByPhc[phc]) preDmByPhc[phc] = { normal: 0, still: 0 };
+                if (PRE_DM_NORMAL_STATUSES.includes(status)) preDmByPhc[phc].normal += 1;
+                if (PRE_DM_STILL_STATUSES.includes(status)) preDmByPhc[phc].still += 1;
+            });
+
+            // Combine all PHCs
+            const allPhcs = new Set([
+                ...Object.keys(screeningByPhc),
+                ...Object.keys(dmByPhc),
+                ...Object.keys(preDmByPhc)
+            ]);
+
+            allPhcs.forEach(phc => {
+                const scr = screeningByPhc[phc] || { screened: 0, target: 0 };
+                const dm = dmByPhc[phc] || { controlled: 0, uncontrolled: 0 };
+                const pre = preDmByPhc[phc] || { normal: 0, still: 0 };
+                
+                const scrAdjTarget = Math.round(scr.target * 0.5);
+                const scrRemaining = Math.max(scrAdjTarget - scr.screened, 0);
+
+                reportData.push({
+                    PHC: phc,
+                    'Total Population': scr.target,
+                    'Target': scrAdjTarget,
+                    'Screening_Screened': scr.screened,
+                    'Screening_Remaining': scrRemaining,
+                    'DM_Controlled': dm.controlled,
+                    'DM_Uncontrolled': dm.uncontrolled,
+                    'PreDM_Still': pre.still
+                });
+            });
+
+            // Sort by PHC name
+            reportData.sort((a, b) => a.PHC.localeCompare(b.PHC));
+            
+            downloadCsv(`zone_report_${targetZone}_${new Date().toISOString().split('T')[0]}.csv`, reportData);
         };
 
         const exportScreeningRemainingByPhc = (phcRaw, zoneKey, item) => {
@@ -904,16 +1006,17 @@
                 if (typeof item === 'string') {
                     return `<span class="phc-pill">${item}</span>`;
                 }
-                const { label, phc } = item;
-                const dataPhc = phc || '';
+                const { label, phc, zone } = item;
+                const dataValue = phc || zone || '';
+                const dataAttr = zone ? 'data-zone' : 'data-phc';
                 const clickable = onClick ? ' phc-pill-clickable' : '';
-                return `<span class="phc-pill${clickable}" data-phc="${dataPhc}">${label}</span>`;
+                return `<span class="phc-pill${clickable}" ${dataAttr}="${dataValue}">${label}</span>`;
             }).join('');
             if (onClick) {
                 el.querySelectorAll('.phc-pill-clickable').forEach(span => {
                     span.addEventListener('click', () => {
-                        const phc = span.getAttribute('data-phc') || '';
-                        onClick(phc);
+                        const value = span.getAttribute('data-phc') || span.getAttribute('data-zone') || '';
+                        onClick(value);
                     });
                 });
             }
@@ -921,100 +1024,204 @@
 
         const buildTopPhcLists = (zoneKey) => {
             const targetZone = zoneKey && zoneKey.toUpperCase() !== clusterId.toUpperCase() ? zoneKey.toUpperCase() : null;
+            const isClusterMode = !targetZone;
 
-            // Screening: screened/target ratio
-            const screeningByPhc = {};
-            screeningRaw.forEach(r => {
-                const z = (r.Zone || r.LAST_VISIT_ZONE || '').toUpperCase();
-                if (targetZone && z !== targetZone) return;
-                const phc = (r.PHC || r.PHC_NAME || '').trim();
-                if (!phc) return;
-                const target = isYes(r.IS_TARGETED);
-                const screened = isYes(r.HAS_LAB) || (!isYes(r.REMAINING) && target);
-                if (!screeningByPhc[phc]) screeningByPhc[phc] = { screened: 0, target: 0 };
-                if (target) screeningByPhc[phc].target += 1;
-                if (screened) screeningByPhc[phc].screened += 1;
-            });
-            const screeningRawList = Object.entries(screeningByPhc)
-                .map(([phc, v]) => {
-                    const adjTarget = Math.round((v.target || 0) * 0.5);
-                    const denom = adjTarget > 0 ? adjTarget : 0;
-                    const ratio = denom > 0 ? v.screened / denom : 0;
-                    return { phc, ...v, adjTarget: denom, ratio };
-                })
-                .filter(x => x.adjTarget > 0);
-            const screeningList = screeningRawList
-                .filter(x => x.ratio < 1) // exclude 100% or above
-                .sort((a, b) => a.ratio - b.ratio || a.screened - b.screened)
-                .slice(0, 5)
-                .map(item => ({
-                    label: `${formatPhcName(item.phc)} • ${item.screened}/${item.adjTarget} (${pctText(item.screened, item.adjTarget)})`,
-                    phc: item.phc,
-                    screened: item.screened,
-                    adjTarget: item.adjTarget
-                }));
-            renderPhcPills(phcTopScreening, screeningList, (clickedPhc) => {
-                const item = screeningList.find(i => normalizeKey(i.phc) === normalizeKey(clickedPhc));
-                exportScreeningRemainingByPhc(clickedPhc, zoneKey, item);
-            });
+            if (isClusterMode) {
+                // Cluster mode: show top 5 zones
+                // Screening by zone
+                const screeningByZone = {};
+                screeningRaw.forEach(r => {
+                    const z = (r.Zone || r.LAST_VISIT_ZONE || '').toUpperCase();
+                    if (!z) return;
+                    const target = isYes(r.IS_TARGETED);
+                    const screened = isYes(r.HAS_LAB) || (!isYes(r.REMAINING) && target);
+                    if (!screeningByZone[z]) screeningByZone[z] = { screened: 0, target: 0 };
+                    if (target) screeningByZone[z].target += 1;
+                    if (screened) screeningByZone[z].screened += 1;
+                });
+                const screeningZoneList = Object.entries(screeningByZone)
+                    .map(([zone, v]) => {
+                        const adjTarget = Math.round((v.target || 0) * 0.5);
+                        const denom = adjTarget > 0 ? adjTarget : 0;
+                        const ratio = denom > 0 ? v.screened / denom : 0;
+                        return { zone, ...v, adjTarget: denom, ratio };
+                    })
+                    .filter(x => x.adjTarget > 0 && x.ratio < 1)
+                    .sort((a, b) => a.ratio - b.ratio || a.screened - b.screened)
+                    .slice(0, 5)
+                    .map(item => ({
+                        label: `${formatZoneName(item.zone)} • ${item.screened}/${item.adjTarget} (${pctText(item.screened, item.adjTarget)})`,
+                        zone: item.zone
+                    }));
+                renderPhcPills(phcTopScreening, screeningZoneList, (clickedZone) => {
+                    showTopbar(clickedZone.toLowerCase());
+                    const bounds = polygons[clickedZone.toLowerCase()]?.getBounds();
+                    if (bounds && bounds.isValid()) {
+                        map.fitBounds(bounds, { padding: [50, 50] });
+                    }
+                    applyZoneLabels(clickedZone.toLowerCase());
+                });
+            } else {
+                // Zone mode: show top 5 PHCs
+                const screeningByPhc = {};
+                screeningRaw.forEach(r => {
+                    const z = (r.Zone || r.LAST_VISIT_ZONE || '').toUpperCase();
+                    if (targetZone && z !== targetZone) return;
+                    const phc = (r.PHC || r.PHC_NAME || '').trim();
+                    if (!phc) return;
+                    const target = isYes(r.IS_TARGETED);
+                    const screened = isYes(r.HAS_LAB) || (!isYes(r.REMAINING) && target);
+                    if (!screeningByPhc[phc]) screeningByPhc[phc] = { screened: 0, target: 0 };
+                    if (target) screeningByPhc[phc].target += 1;
+                    if (screened) screeningByPhc[phc].screened += 1;
+                });
+                const screeningRawList = Object.entries(screeningByPhc)
+                    .map(([phc, v]) => {
+                        const adjTarget = Math.round((v.target || 0) * 0.5);
+                        const denom = adjTarget > 0 ? adjTarget : 0;
+                        const ratio = denom > 0 ? v.screened / denom : 0;
+                        return { phc, ...v, adjTarget: denom, ratio };
+                    })
+                    .filter(x => x.adjTarget > 0);
+                const screeningList = screeningRawList
+                    .filter(x => x.ratio < 1) // exclude 100% or above
+                    .sort((a, b) => a.ratio - b.ratio || a.screened - b.screened)
+                    .slice(0, 5)
+                    .map(item => ({
+                        label: `${formatPhcName(item.phc)} • ${item.screened}/${item.adjTarget} (${pctText(item.screened, item.adjTarget)})`,
+                        phc: item.phc,
+                        screened: item.screened,
+                        adjTarget: item.adjTarget
+                    }));
+                renderPhcPills(phcTopScreening, screeningList, (clickedPhc) => {
+                    const item = screeningList.find(i => normalizeKey(i.phc) === normalizeKey(clickedPhc));
+                    exportScreeningRemainingByPhc(clickedPhc, zoneKey, item);
+                });
+            }
 
             // DM: controlled / (controlled+uncontrolled)
-            const dmByPhc = {};
-            dmRaw.forEach(r => {
-                const z = (r.LAST_VISIT_ZONE || r.Zone || '').toUpperCase();
-                if (targetZone && z !== targetZone) return;
-                const phc = (r.LAST_VISIT_PHC || r.PHC || '').trim();
-                if (!phc) return;
-                const status = String(r.CONTROL_STATUS || '').trim().toLowerCase();
-                if (!dmByPhc[phc]) dmByPhc[phc] = { controlled: 0, uncontrolled: 0 };
-                if (CONTROLLED_STATUSES.includes(status)) dmByPhc[phc].controlled += 1;
-                if (UNCONTROLLED_STATUSES.includes(status)) dmByPhc[phc].uncontrolled += 1;
-            });
-            const dmList = Object.entries(dmByPhc)
-                .map(([phc, v]) => {
-                    const total = v.controlled + v.uncontrolled;
-                    const ratio = total > 0 ? v.controlled / total : 0;
-                    return { phc, ...v, total, ratio };
-                })
-                .filter(x => x.uncontrolled > 0) // only PHCs with uncontrolled patients
-                .sort((a, b) => b.uncontrolled - a.uncontrolled) // sort by uncontrolled count (descending)
-                .slice(0, 5)
-                .map(item => ({
-                    label: `${formatPhcName(item.phc)} • ${item.controlled}/${item.total} (${pctText(item.controlled, item.total)})`,
-                    phc: item.phc
-                }));
-            renderPhcPills(phcTopDm, dmList, (clickedPhc) => {
-                exportDmUncontrolledByPhc(clickedPhc, zoneKey);
-            });
+            if (isClusterMode) {
+                const dmByZone = {};
+                dmRaw.forEach(r => {
+                    const z = (r.LAST_VISIT_ZONE || r.Zone || '').toUpperCase();
+                    if (!z) return;
+                    const status = String(r.CONTROL_STATUS || '').trim().toLowerCase();
+                    if (!dmByZone[z]) dmByZone[z] = { controlled: 0, uncontrolled: 0 };
+                    if (CONTROLLED_STATUSES.includes(status)) dmByZone[z].controlled += 1;
+                    if (UNCONTROLLED_STATUSES.includes(status)) dmByZone[z].uncontrolled += 1;
+                });
+                const dmZoneList = Object.entries(dmByZone)
+                    .map(([zone, v]) => {
+                        const total = v.controlled + v.uncontrolled;
+                        const ratio = total > 0 ? v.controlled / total : 0;
+                        return { zone, ...v, total, ratio };
+                    })
+                    .filter(x => x.uncontrolled > 0)
+                    .sort((a, b) => b.uncontrolled - a.uncontrolled)
+                    .slice(0, 5)
+                    .map(item => ({
+                        label: `${formatZoneName(item.zone)} • ${item.controlled}/${item.total} (${pctText(item.controlled, item.total)})`,
+                        zone: item.zone
+                    }));
+                renderPhcPills(phcTopDm, dmZoneList, (clickedZone) => {
+                    showTopbar(clickedZone.toLowerCase());
+                    const bounds = polygons[clickedZone.toLowerCase()]?.getBounds();
+                    if (bounds && bounds.isValid()) {
+                        map.fitBounds(bounds, { padding: [50, 50] });
+                    }
+                    applyZoneLabels(clickedZone.toLowerCase());
+                });
+            } else {
+                const dmByPhc = {};
+                dmRaw.forEach(r => {
+                    const z = (r.LAST_VISIT_ZONE || r.Zone || '').toUpperCase();
+                    if (targetZone && z !== targetZone) return;
+                    const phc = (r.LAST_VISIT_PHC || r.PHC || '').trim();
+                    if (!phc) return;
+                    const status = String(r.CONTROL_STATUS || '').trim().toLowerCase();
+                    if (!dmByPhc[phc]) dmByPhc[phc] = { controlled: 0, uncontrolled: 0 };
+                    if (CONTROLLED_STATUSES.includes(status)) dmByPhc[phc].controlled += 1;
+                    if (UNCONTROLLED_STATUSES.includes(status)) dmByPhc[phc].uncontrolled += 1;
+                });
+                const dmList = Object.entries(dmByPhc)
+                    .map(([phc, v]) => {
+                        const total = v.controlled + v.uncontrolled;
+                        const ratio = total > 0 ? v.controlled / total : 0;
+                        return { phc, ...v, total, ratio };
+                    })
+                    .filter(x => x.uncontrolled > 0) // only PHCs with uncontrolled patients
+                    .sort((a, b) => b.uncontrolled - a.uncontrolled) // sort by uncontrolled count (descending)
+                    .slice(0, 5)
+                    .map(item => ({
+                        label: `${formatPhcName(item.phc)} • ${item.controlled}/${item.total} (${pctText(item.controlled, item.total)})`,
+                        phc: item.phc
+                    }));
+                renderPhcPills(phcTopDm, dmList, (clickedPhc) => {
+                    exportDmUncontrolledByPhc(clickedPhc, zoneKey);
+                });
+            }
 
             // Pre-DM: back to normal / total pre-dm
-            const preByPhc = {};
-            preDmRaw.forEach(r => {
-                const z = (r.LAST_VISIT_ZONE || r.Zone || '').toUpperCase();
-                if (targetZone && z !== targetZone) return;
-                const phc = (r.LAST_VISIT_PHC || r.PHC || '').trim();
-                if (!phc) return;
-                const status = String(r.STATUS || '').trim().toLowerCase();
-                if (!preByPhc[phc]) preByPhc[phc] = { normal: 0, still: 0 };
-                if (PRE_DM_NORMAL_STATUSES.includes(status)) preByPhc[phc].normal += 1;
-                if (PRE_DM_STILL_STATUSES.includes(status)) preByPhc[phc].still += 1;
-            });
-            const preList = Object.entries(preByPhc)
-                .map(([phc, v]) => {
-                    const total = v.normal + v.still;
-                    const ratio = total > 0 ? v.normal / total : 0;
-                    return { phc, ...v, total, ratio };
-                })
-                .filter(x => x.still > 0) // only PHCs with still Pre-DM patients
-                .sort((a, b) => b.still - a.still) // sort by still count (descending)
-                .slice(0, 5)
-                .map(item => ({
-                    label: `${formatPhcName(item.phc)} • ${item.still}/${item.total} (${pctText(item.still, item.total)})`,
-                    phc: item.phc
-                }));
-            renderPhcPills(phcTopPreDm, preList, (clickedPhc) => {
-                exportPreDmStillByPhc(clickedPhc, zoneKey);
-            });
+            if (isClusterMode) {
+                const preByZone = {};
+                preDmRaw.forEach(r => {
+                    const z = (r.LAST_VISIT_ZONE || r.Zone || '').toUpperCase();
+                    if (!z) return;
+                    const status = String(r.STATUS || '').trim().toLowerCase();
+                    if (!preByZone[z]) preByZone[z] = { normal: 0, still: 0 };
+                    if (PRE_DM_NORMAL_STATUSES.includes(status)) preByZone[z].normal += 1;
+                    if (PRE_DM_STILL_STATUSES.includes(status)) preByZone[z].still += 1;
+                });
+                const preZoneList = Object.entries(preByZone)
+                    .map(([zone, v]) => {
+                        const total = v.normal + v.still;
+                        const ratio = total > 0 ? v.normal / total : 0;
+                        return { zone, ...v, total, ratio };
+                    })
+                    .filter(x => x.still > 0)
+                    .sort((a, b) => b.still - a.still)
+                    .slice(0, 5)
+                    .map(item => ({
+                        label: `${formatZoneName(item.zone)} • ${item.still}/${item.total} (${pctText(item.still, item.total)})`,
+                        zone: item.zone
+                    }));
+                renderPhcPills(phcTopPreDm, preZoneList, (clickedZone) => {
+                    showTopbar(clickedZone.toLowerCase());
+                    const bounds = polygons[clickedZone.toLowerCase()]?.getBounds();
+                    if (bounds && bounds.isValid()) {
+                        map.fitBounds(bounds, { padding: [50, 50] });
+                    }
+                    applyZoneLabels(clickedZone.toLowerCase());
+                });
+            } else {
+                const preByPhc = {};
+                preDmRaw.forEach(r => {
+                    const z = (r.LAST_VISIT_ZONE || r.Zone || '').toUpperCase();
+                    if (targetZone && z !== targetZone) return;
+                    const phc = (r.LAST_VISIT_PHC || r.PHC || '').trim();
+                    if (!phc) return;
+                    const status = String(r.STATUS || '').trim().toLowerCase();
+                    if (!preByPhc[phc]) preByPhc[phc] = { normal: 0, still: 0 };
+                    if (PRE_DM_NORMAL_STATUSES.includes(status)) preByPhc[phc].normal += 1;
+                    if (PRE_DM_STILL_STATUSES.includes(status)) preByPhc[phc].still += 1;
+                });
+                const preList = Object.entries(preByPhc)
+                    .map(([phc, v]) => {
+                        const total = v.normal + v.still;
+                        const ratio = total > 0 ? v.normal / total : 0;
+                        return { phc, ...v, total, ratio };
+                    })
+                    .filter(x => x.still > 0) // only PHCs with still Pre-DM patients
+                    .sort((a, b) => b.still - a.still) // sort by still count (descending)
+                    .slice(0, 5)
+                    .map(item => ({
+                        label: `${formatPhcName(item.phc)} • ${item.still}/${item.total} (${pctText(item.still, item.total)})`,
+                        phc: item.phc
+                    }));
+                renderPhcPills(phcTopPreDm, preList, (clickedPhc) => {
+                    exportPreDmStillByPhc(clickedPhc, zoneKey);
+                });
+            }
         };
 
         // Zone click => show topbar
@@ -1041,6 +1248,14 @@
 
         if (langArBtn) langArBtn.addEventListener('click', () => setLang('ar'));
         if (langEnBtn) langEnBtn.addEventListener('click', () => setLang('en'));
+        if (generateReportBtn) {
+            generateReportBtn.addEventListener('click', () => {
+                const currentZone = lastZoneId || clusterId;
+                if (currentZone && currentZone !== clusterId) {
+                    generateZoneReport(currentZone);
+                }
+            });
+        }
         attachExportClicks();
         // Ensure initial labels/tooltips respect the default language
         dmStatsReady = loadDmStats();
